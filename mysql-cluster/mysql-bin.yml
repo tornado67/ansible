@@ -1,0 +1,84 @@
+
+- hosts: '{{ target }}'
+  vars:
+    clone_dir: /tmp/clchk
+  tasks:
+  
+  - name: "Install Common requirements"
+    action: >
+      {{ ansible_pkg_mgr }}  state=present name={{ item }}
+    with_items:
+      - curl
+      - net-tools
+      - bind-utils
+      - git
+      - rsync
+      - ntp
+      - nscd
+      - cmake
+      - ncurses-devel
+      - policycoreutils-python
+      - nano
+      - hyperv-daemons
+      - hyperv-tools
+
+  - name: Add MariaDB repository
+    yum_repository:
+      name: MariaDB
+      description: MariaDB 10.1 Repo
+      gpgcheck: yes
+      gpgkey: https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+      baseurl: http://yum.mariadb.org/10.1/centos7-amd64
+
+  - name: Installing MariaDB
+    yum:
+     state: present 
+     name: mariadb-server
+
+  - name: Configure SELinux for mysql
+    shell:  'semanage permissive -a mysqld_t'
+ 
+  - name: Configure selinux for ports
+    shell: 'semanage port -a -t mysqld_port_t -p tcp 4567; semanage port -a -t mysqld_port_t -p tcp 4568; semanage port -a -t mysqld_port_t -p tcp 4444; semanage port -a -t mysqld_port_t -p udp 4567 ' 
+
+  - name: start mariadb
+    shell: 'systemctl enable mysql; systemctl start mysql'
+
+  - name: configure firewall
+    shell: 'firewall-cmd --zone=public --add-port=3306/tcp --permanent;firewall-cmd --zone=public --add-port=4567/tcp --permanent;firewall-cmd --zone=public --add-port=4568/tcp --permanent;firewall-cmd --zone=public --add-port=4444/tcp --permanent;firewall-cmd --zone=public --add-port=4567/udp --permanent; firewall-cmd --zone=public --add-port=50005/tcp --permanent'
+
+  - name: reload firewall
+    shell: 'firewall-cmd --reload'
+
+
+  - name: create clone dir
+    file:
+      path: "{{ clone_dir }}"
+      state: directory
+      mode: 0777
+
+  - name: Clone clustercheck
+    git:
+      repo: https://github.com/olafz/percona-clustercheck.git     
+      dest: "{{ clone_dir  }}"
+      clone: yes
+      force: yes
+
+  - name: set permissions
+    file:
+      path: "{{  clone_dir }}"
+      recurse: yes
+      mode: 0777
+
+  - name: Move clustercheck to /bin 
+    copy:
+      remote_src: yes
+      src: "{{ clone_dir  }}/clustercheck"
+      dest: "/usr/bin/clustercheck"
+      owner: root
+      group: root
+      mode: 0777
+
+  - name: create mysql user for clustercheck
+    command: mysql -e "GRANT PROCESS ON *.* TO 'clustercheckuser'@'localhost' IDENTIFIED BY 'clustercheckpassword!'"
+    

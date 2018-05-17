@@ -1,0 +1,95 @@
+- hosts: '{{ target }}'
+  vars:
+    download_dir: /tmp
+  tasks:
+  - name: Download Repo
+    get_url:
+      url:  http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-7-11.noarch.rpm
+      dest: "{{ download_dir  }}"
+      mode: 0755
+
+  - name: Install Repo
+    yum:
+      name: "{{  download_dir }}/epel-release-7-11.noarch.rpm"
+      state: present
+
+  - name: "Install Common requirements"
+    action: >
+      {{ ansible_pkg_mgr }}  state=present name={{ item }}
+    with_items:
+      - pacemaker
+      - pcs 
+      - resource-agents 
+      - fence-agents-all
+      - libxslt-devel.x86_64
+      - device-mapper-devel.x86_64
+      - libpciaccess-devel.x86_64
+      - libnl-devel.x86_64
+      - python-devel.x86_64
+      - glib2-devel
+      - libcurl-devel.x86_64
+      - openssl-devel.x86_64
+      - cmake
+
+  - name: create corosyc config 
+    command: cp /etc/corosync/corosync.conf.example  /etc/corosync/corosync.conf 
+    args:
+      creates:  /etc/corosync/corosync.conf
+
+  - name: configure corosync
+    replace:
+      path: /etc/corosync/corosync.conf
+      regexp: '192.168.1.0'
+      after: 'interface* '
+      replace: "{{ ansible_eth0.ipv4.address }}"
+      backup: yes
+     
+
+  - name: disable firewalld
+    command: systemctl disable firewalld
+
+  - name: stop firewalld
+    command: systemctl stop firewalld
+
+  - name: starting corosync
+    systemd:
+      name: corosync.service
+      state: started
+      enabled: true
+
+  - name: start pacemaker
+    systemd:
+      name: pacemaker.service
+      state: started
+      enabled: true
+
+  - name: start pcsd
+    systemd:
+      name: pcsd.service
+      state: started
+      enabled: true
+
+  - name: enable all services
+    command: systemctl enable pcsd pacemaker corosync
+
+  - name: create user
+    user:
+      name: hacluster
+      password: $6$6I57A/DPdBxnhWr$aCOXZ/7El/xVqOpFMdUqQVrCsLArDJavzUpgdQ0eu83xStxfh9493d7GRls6p9OT.RqViZfoekszX/KSq6RwI0
+      comment: "cluster suer"
+      shell: /bin/bash   
+   
+  - name: pcs auth
+    command: pcs cluster auth <address>  <address> -u hacluster -p RczjvhPJ  --force 
+ 
+  - name: cluster setup
+    command: pcs cluster setup --force --name haproxy-cluster <address>  <address>
+
+  - nmae: start cluster
+    command: pcs cluster start --all
+
+  - name: disable quorum
+    command: pcs property set no-quorum-policy=ignore
+  
+  - name: disable stonith
+    command: pcs property set stonith-enabled=false
