@@ -43,6 +43,7 @@
       dest: /etc/security/limits.conf
       owner: root
       mode: 0644
+      backup: yes
  
   - name: "deploy my.cnf"
     tags:
@@ -52,7 +53,27 @@
       dest: /etc/my.cnf 
       owner: root
       mode: 0644
+      backup: yes
 
+  - name: configure mariadb buffer_pool_size
+    tags:
+      - config
+    replace:
+      path: /etc/my.cnf
+      regexp: 'innodb_buffer_pool_size=X'
+      replace: 'innodb_buffer_pool_size = {{ ansible_memtotal_mb // 100 * 80  }}M'
+      backup: yes
+
+  - name: configure mariadb buffer_pool_instances
+    tags:
+      - config
+    replace:
+      path: /etc/my.cnf
+      regexp: 'innodb_buffer_pool_instances=X'
+      replace: 'innodb_buffer_pool_instances = {{ (ansible_memtotal_mb // 100 * 80 )//1000 }}'
+      backup: yes
+
+ 
   - name: deploy mariadb unit
     tags:
       - config
@@ -61,6 +82,7 @@
       dest: /usr/lib/systemd/system/mariadb.service
       owner: root
       mode: 0644
+      backup: yes
 
   - name: "start mariadb"
     tags:
@@ -72,17 +94,24 @@
       daemon_reload: yes
 
   - name: create database
+    tags:
+      - db
     mysql_db:
       name: zabbix
       state: present
 
-  - mysql_user:
+  - name: create zabbix user  
+    tags:
+      - db
+    mysql_user:
       name: zabbix
       password: zabbix
       priv: 'zabbix.*:ALL'
       state: present
 
   - name: import proxy database
+    tags:
+      - db
     mysql_db:
       name: zabbix
       state: import
@@ -96,13 +125,13 @@
       dest: /etc/zabbix/zabbix_proxy.conf
       mode: 0644
       owner: root
+      backup: yes
 
-  - name: "start zabbix proxy"
+  - name: "(re)start zabbix proxy"
+    tags:
+      - zabbix
     systemd:
       enabled: True
       daemon_reload: yes
       name: zabbix-proxy
       state: restarted
-      
-      
- 
