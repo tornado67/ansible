@@ -1,0 +1,108 @@
+- hosts: '{{ target }}'
+  vars:
+    download_dir: "/tmp"
+    mysql_dump_location: "/usr/share/doc/zabbix-proxy-mysql-3.2.11/schema.sql.gz" #'{{ sql }}' #schema.sql.gz location
+
+  tasks:
+  - name: "install required packages"
+    tags:
+      - install
+    action: >
+      {{ ansible_pkg_mgr }}  state=latest name={{ item }}
+    with_items:
+      - zabbix-proxy-mysql
+      - mariadb-server
+      - mariadb
+      - libselinux-python
+      - libsemanage-python
+      - selinux-policy-targeted
+      - selinux-policy
+      - MySQL-python
+
+  - name: Set zabbix_can_network flag on and keep it persistent across reboots
+    tags:
+      - selinux
+    seboolean:
+      name: zabbix_can_network 
+      state: yes
+      persistent: yes
+
+  - name: Set httpd_can_connect_zabbix flag on and keep it persistent across reboots
+    tags:
+      - selinux
+    seboolean:
+      name: httpd_can_connect_zabbix
+      state: yes
+      persistent: yes 
+
+  - name: deploy limits.cnf
+    tags:
+      - config
+    copy:
+      src: ./limits.conf
+      dest: /etc/security/limits.conf
+      owner: root
+      mode: 0644
+ 
+  - name: "deploy my.cnf"
+    tags:
+      - config
+    copy:
+      src: ./my.cnf 
+      dest: /etc/my.cnf 
+      owner: root
+      mode: 0644
+
+  - name: deploy mariadb unit
+    tags:
+      - config
+    copy:
+      src: ./mariadb.service
+      dest: /usr/lib/systemd/system/mariadb.service
+      owner: root
+      mode: 0644
+
+  - name: "start mariadb"
+    tags:
+      - mariadb
+    systemd:
+      name: mariadb
+      enabled: True
+      state: restarted
+      daemon_reload: yes
+
+  - name: create database
+    mysql_db:
+      name: zabbix
+      state: present
+
+  - mysql_user:
+      name: zabbix
+      password: zabbix
+      priv: 'zabbix.*:ALL'
+      state: present
+
+  - name: import proxy database
+    mysql_db:
+      name: zabbix
+      state: import
+      target: '{{ mysql_dump_location }}'
+      
+  - name: "deploy zabbix_proxy.conf"
+    tags: 
+      - config
+    copy:
+      src: ./zabbix_proxy.conf
+      dest: /etc/zabbix/zabbix_proxy.conf
+      mode: 0644
+      owner: root
+
+  - name: "start zabbix proxy"
+    systemd:
+      enabled: True
+      daemon_reload: yes
+      name: zabbix-proxy
+      state: restarted
+      
+      
+ 
