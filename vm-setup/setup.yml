@@ -1,4 +1,8 @@
 - hosts: '{{ target }}'
+  vars_prompt:
+    - name: "bind_password"
+      prompt: "Password for Main\\Aleksey.Rujitskii"
+      private: yes
   vars:
     download_dir: "/tmp"
   tasks:
@@ -9,6 +13,8 @@
       mode: 0755
 
   - name: Download zabbix Repo
+    tags:
+      - zabbix
     get_url:
       url:  http://repo.zabbix.com/zabbix/3.2/rhel/7/x86_64/zabbix-release-3.2-1.el7.noarch.rpm
       dest: "{{ download_dir  }}"
@@ -19,11 +25,14 @@
       {{ ansible_pkg_mgr }}  state=present name={{ item }}
     with_items:
       - "{{  download_dir }}/epel-release-latest-7.noarch.rpm"
-      - "{{  download_dir }}/zabbix-release-3.2-1.el7.noarch.rpm" 
+      - "{{  download_dir }}/zabbix-release-3.2-1.el7.noarch.rpm"
+        
 
   - name: "Install Common requirements"
+    tags:
+      - install
     action: >
-      {{ ansible_pkg_mgr }}  state=present name={{ item }}
+      {{ ansible_pkg_mgr }}  state=latest name={{ item }}
     with_items:
       - curl
       - net-tools
@@ -39,8 +48,64 @@
       - hyperv-tools
       - htop
       - zabbix-agent
+      - adcli
+      - kexec-tools 
+      - mc 
+      - ncompress
+      - net-tools
+      - ntp
+      - ntpdate
+      - oddjob
+      - oddjob-mkhomedir
+      - realmd
+      - rsyslog
+      - samba
+      - samba-common
+      - sssd
+      - telnet
+      - xinetd
+      - python-gobject 
+      - dbus
+      - NetworkManager-glib
+      - python-pip
+  # may not work as expected on newely installed OS
+  - name: fix dns
+    shell: nmcli con mod "System eth0" ipv4.dns-search "domain.com"
+    shell: nmcli con mod "System eth0"  ipv4.dns-search "domain.com"
+
+     
+  - name: fix hostname
+    replace:
+      dest: /etc/hostname
+      regexp: 'PROXY'
+      replace: 'PRX'
+    
+  - name: setup ntp servers 
+    shell:  'echo -e "server 10.xx.xx.xx\nserver 10.xx.xx.xx\nserver 10.xx.xx.xx\nserver 10.xx.xx.xx\nserver " > /etc/ntp.conf' 
+      
+  - name: install pexcepct
+    pip:
+      name: pexpect  
+
+#  - name: Join system to AD and put the computer object in the Linux OU
+#    expect:
+#      command: 'realm join --user=<username> <domain>'
+#      responses:
+#         Password for admin_user: '{{ bind_password  }}'
+        
+#  - name:  realm permit
+#    shell: realm permit -g admins-group@domain.com
+    
+#  - name: update sssd.conf
+#    shell: sed -i -e 's/use_fully_qualified_names = True/use_fully_qualified_names = False/g'  /etc/sssd/sssd.conf 
+    
+#  - name: adcli update
+#    shell: adcli update --os-name=CentOS --os-version=7
+
  
   - name: "deploy zabbix_agentd.conf"
+    tags:
+      - zabbix
     copy:
       src: ./zabbix_agentd.conf
       dest: /etc/zabbix/zabbix_agentd.conf
@@ -49,6 +114,8 @@
       mode: 0400
 
   - name: "restart zabbix agent"
+    tags:
+      - zabbix
     service:
       name: zabbix-agent
       state: restarted
