@@ -110,8 +110,6 @@
       group: root
       mode: 0600
       backup: yes
-
-#    shell:  echo -e "server 10.124.0.141\nserver 10.124.0.142\nserver 10.7.21.15\nserver 10.193.21.12\nserver " > /etc/ntp.conf
   
   - name: deploy sssd.conf 
     tags:
