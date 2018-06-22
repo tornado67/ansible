@@ -1,8 +1,4 @@
 - hosts: '{{ target }}'
-  vars_prompt:
-    - name: "bind_password"
-      prompt: "Password for Main\\Aleksey.Rujitskii"
-      private: yes
   vars:
     download_dir: "/tmp"
   tasks:
@@ -26,7 +22,40 @@
     with_items:
       - "{{  download_dir }}/epel-release-latest-7.noarch.rpm"
       - "{{  download_dir }}/zabbix-release-3.2-1.el7.noarch.rpm"
-        
+      
+
+  - name: deploy network configuration /etc/sysconfig/network-scripts/ifcfg-eth0
+    tags: 
+      - net
+    copy:
+      src:   ./ifcfg-eth0
+      dest:  /etc/sysconfig/network-scripts/ifcfg-eth0
+      owner: root
+      group: root
+      mode:  0600
+
+  - name: edit ifcfg-eth0
+    tags:
+      - net
+    replace:
+      path: /etc/sysconfig/network-scripts/ifcfg-eth0
+      regexp: 'IPADDR=XXX'
+      replace: 'IPADDR={{ ansible_default_ipv4.address  }}'
+      backup: yes
+      backup: yes
+
+  - name: set timezone to Europe/Moscow
+    tags:
+      - time
+    timezone:
+      name: Europe/Moscow
+
+  - name: Restart network service for interface eth0
+    tags:
+      - net
+    service:
+      name: network
+      state: restarted
 
   - name: "Install Common requirements"
     tags:
@@ -67,42 +96,35 @@
       - python-gobject 
       - dbus
       - NetworkManager-glib
-      - python-pip
-  # may not work as expected on newely installed OS
-  - name: fix dns
-    shell: nmcli con mod "System eth0" ipv4.dns-search "domain.com"
-    shell: nmcli con mod "System eth0"  ipv4.dns-search "domain.com"
-
-     
-  - name: fix hostname
-    replace:
-      dest: /etc/hostname
-      regexp: 'PROXY'
-      replace: 'PRX'
-    
-  - name: setup ntp servers 
-    shell:  'echo -e "server 10.xx.xx.xx\nserver 10.xx.xx.xx\nserver 10.xx.xx.xx\nserver 10.xx.xx.xx\nserver " > /etc/ntp.conf' 
+      - nm-connection-editor.x86_64
+      - libsemanage-python
+      - policycoreutils-python
       
-  - name: install pexcepct
-    pip:
-      name: pexpect  
+  - name: deploy ntp.conf
+    tags:
+      - ntp
+    copy:
+      src: ./ntp.conf
+      dest: /etc/ntp.conf
+      owner: root
+      group: root
+      mode: 0600
+      backup: yes
 
-#  - name: Join system to AD and put the computer object in the Linux OU
-#    expect:
-#      command: 'realm join --user=<username> <domain>'
-#      responses:
-#         Password for admin_user: '{{ bind_password  }}'
-        
-#  - name:  realm permit
-#    shell: realm permit -g admins-group@domain.com
+#    shell:  echo -e "server 10.124.0.141\nserver 10.124.0.142\nserver 10.7.21.15\nserver 10.193.21.12\nserver " > /etc/ntp.conf
+  
+  - name: deploy sssd.conf 
+    tags:
+      - sssd
+    copy:
+      src: ./sssd.conf
+      dest: /etc/sssd/sssd.conf
+      owner: root
+      group: root
+      mode: 0600
+      backup: yes
     
-#  - name: update sssd.conf
-#    shell: sed -i -e 's/use_fully_qualified_names = True/use_fully_qualified_names = False/g'  /etc/sssd/sssd.conf 
-    
-#  - name: adcli update
-#    shell: adcli update --os-name=CentOS --os-version=7
 
- 
   - name: "deploy zabbix_agentd.conf"
     tags:
       - zabbix
@@ -111,7 +133,8 @@
       dest: /etc/zabbix/zabbix_agentd.conf
       owner: root
       group: root
-      mode: 0400
+      mode: 0644
+      backup: yes
 
   - name: "restart zabbix agent"
     tags:
