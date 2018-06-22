@@ -1,1 +1,1 @@
-Simple ansible playook set for setting up an empty Hyper-V VM.
+Ansible playbook for Hyper-V-hosted Centos 7 VM initial setup
